@@ -1,8 +1,9 @@
 import 'dart:developer';
-
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+
+import 'model/product_model.dart';
 
 void main() {
   runApp(const MyApp());
@@ -34,6 +35,8 @@ class _ProductListScreenState extends State<ProductListScreen> {
   late Future<List<Product>> _products;
   final Map<Product, int> _cart = {}; // Cart state: Product -> Quantity
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  bool _isBuying = false; // Track buy action
+  String baseUrl = "http://localhost:8080";
 
   @override
   void initState() {
@@ -41,11 +44,11 @@ class _ProductListScreenState extends State<ProductListScreen> {
     _products = fetchProducts();
   }
 
-  // Fetch products from the backend
   Future<List<Product>> fetchProducts() async {
-    final response = await http.get(Uri.parse('http://localhost:8080/products'));
-
+    log('Fetching products...');
+    final response = await http.get(Uri.parse('$baseUrl/products'));
     if (response.statusCode == 200) {
+      log('Products fetched successfully');
       final Map<String, dynamic> data = jsonDecode(response.body);
       return data.entries.map((entry) {
         final product = entry.value;
@@ -57,13 +60,15 @@ class _ProductListScreenState extends State<ProductListScreen> {
         );
       }).toList();
     } else {
+      log('Failed to fetch products: ${response.statusCode}');
       throw Exception('Failed to load products');
     }
   }
 
   Future<void> _addToCart(Product product) async {
+    log('Adding product to cart: ${product.name}');
     final response = await http.post(
-      Uri.parse('http://localhost:8080/cart'),
+      Uri.parse('$baseUrl/cart'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'productId': product.id}),
     );
@@ -76,8 +81,9 @@ class _ProductListScreenState extends State<ProductListScreen> {
   }
 
   Future<void> _removeFromCart(Product product) async {
+    log('Removing product from cart: ${product.name}');
     final response = await http.put(
-      Uri.parse('http://localhost:8080/cart'),
+      Uri.parse('$baseUrl/cart'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'productId': product.id}),
     );
@@ -94,8 +100,9 @@ class _ProductListScreenState extends State<ProductListScreen> {
   }
 
   Future<void> _deleteFromCart(Product product) async {
+    log('Deleting product from cart: ${product.name}');
     final response = await http.delete(
-      Uri.parse('http://localhost:8080/cart/${product.id}'),
+      Uri.parse('$baseUrl/cart/${product.id}'),
     );
 
     if (response.statusCode == 200) {
@@ -106,20 +113,26 @@ class _ProductListScreenState extends State<ProductListScreen> {
   }
 
   Future<void> _buy() async {
-    final response = await http.post(
-      Uri.parse('http://localhost:8080/buy'),
-    );
+    setState(() => _isBuying = true); // Show loading indicator
+    await Future.delayed(const Duration(seconds: 2)); // Simulate loading time
 
+    final response = await http.post(Uri.parse('$baseUrl/buy'));
     if (response.statusCode == 200) {
+      log('Purchase successful');
       setState(() {
         _cart.clear();
+        _products = fetchProducts(); // Reload products
+        _isBuying = false; // Hide loading indicator
       });
+      _scaffoldKey.currentState?.closeEndDrawer();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Purchase successful!')),
       );
+    } else {
+      log('Purchase failed');
+      setState(() => _isBuying = false); // Hide loading indicator
     }
   }
-
 
   double _calculateTotal() {
     return _cart.entries.fold<double>(
@@ -136,9 +149,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
         title: const Text('Products'),
         actions: [
           IconButton(
-            onPressed: () {
-              _scaffoldKey.currentState!.openEndDrawer();
-            },
+            onPressed: () => _scaffoldKey.currentState!.openEndDrawer(),
             icon: const Icon(Icons.shopping_basket),
           ),
         ],
@@ -149,10 +160,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
             children: [
               const Text(
                 'Cart',
-                style: TextStyle(
-                  color: Colors.black,
-                  fontSize: 24,
-                ),
+                style: TextStyle(fontSize: 24),
               ),
               Expanded(
                 child: _cart.isEmpty
@@ -163,7 +171,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
                     final quantity = entry.value;
                     return ListTile(
                       leading: Image.network(
-                        'http://localhost:8080/static/${product.image}',
+                        '$baseUrl/static/${product.image}',
                         width: 50,
                         height: 50,
                         errorBuilder: (context, error, stackTrace) =>
@@ -179,14 +187,12 @@ class _ProductListScreenState extends State<ProductListScreen> {
                           const SizedBox(height: 8),
                           Row(
                             children: [
-                              IconButton(
-                                icon: const Icon(Icons.remove),
-                                onPressed: () => _removeFromCart(product),
-                              ),
-                              Text(
-                                '$quantity',
-                                style: const TextStyle(fontSize: 16),
-                              ),
+                              if (quantity > 0)
+                                IconButton(
+                                  icon: const Icon(Icons.remove),
+                                  onPressed: () => _removeFromCart(product),
+                                ) ,
+                              Text('$quantity'),
                               IconButton(
                                 icon: const Icon(Icons.add),
                                 onPressed: () => _addToCart(product),
@@ -205,17 +211,32 @@ class _ProductListScreenState extends State<ProductListScreen> {
               ),
               Container(
                 padding: const EdgeInsets.all(16),
-                // color: Colors.blue,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
                       'Total: \$${_calculateTotal().toStringAsFixed(2)}',
-                      style: const TextStyle(color: Colors.black, fontSize: 20),
+                      style: const TextStyle(fontSize: 20),
                     ),
                     MaterialButton(
                       color: Colors.green,
-                      onPressed: () {}, child: const Text("Buy",style :  TextStyle(color: Colors.white, fontSize: 20)),)
+                      onPressed: (_cart.isNotEmpty && !_isBuying)
+                          ? _buy
+                          : null, // Disable if empty or loading
+                      child: _isBuying
+                          ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
+                          : const Text(
+                        "Buy",
+                        style: TextStyle(color: Colors.white, fontSize: 20),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -223,7 +244,6 @@ class _ProductListScreenState extends State<ProductListScreen> {
           ),
         ),
       ),
-
       body: FutureBuilder<List<Product>>(
         future: _products,
         builder: (context, snapshot) {
@@ -247,7 +267,6 @@ class _ProductListScreenState extends State<ProductListScreen> {
             itemCount: products.length,
             itemBuilder: (context, index) {
               final product = products[index];
-              log(product.image);
               return Card(
                 elevation: 4,
                 child: Column(
@@ -256,7 +275,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
                     Expanded(
                       flex: 3,
                       child: Image.network(
-                        'http://localhost:8080/static/${product.image}', // Use `/static/` endpoint
+                        '$baseUrl/static/${product.image}',
                         fit: BoxFit.cover,
                         width: double.infinity,
                         errorBuilder: (context, error, stackTrace) =>
@@ -266,10 +285,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
                     const SizedBox(height: 8),
                     Text(
                       product.name,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                       textAlign: TextAlign.center,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
@@ -277,20 +293,17 @@ class _ProductListScreenState extends State<ProductListScreen> {
                     const SizedBox(height: 4),
                     Text(
                       '\$${product.price.toStringAsFixed(2)}',
-                      style: const TextStyle(
-                        color: Colors.black,
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
                       textAlign: TextAlign.center,
                     ),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        IconButton(
-                          onPressed: () => _removeFromCart(product),
-                          icon: const Icon(Icons.remove),
-                        ),
+                        if ((_cart[product] ?? 0) > 0)
+                          IconButton(
+                            onPressed: () => _removeFromCart(product),
+                            icon: const Icon(Icons.remove),
+                          ),
                         Text('${_cart[product] ?? 0}'),
                         IconButton(
                           onPressed: () => _addToCart(product),
@@ -309,23 +322,4 @@ class _ProductListScreenState extends State<ProductListScreen> {
   }
 }
 
-// Product Model
-class Product {
-  final String id;
-  final String name;
-  final double price;
-  final String image;
 
-  Product({
-    required this.id,
-    required this.name,
-    required this.price,
-    required this.image,
-  });
-
-  @override
-  bool operator ==(Object other) => other is Product && id == other.id;
-
-  @override
-  int get hashCode => id.hashCode;
-}
