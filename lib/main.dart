@@ -1,3 +1,5 @@
+import 'dart:developer';
+
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
@@ -161,7 +163,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
                     final quantity = entry.value;
                     return ListTile(
                       leading: Image.network(
-                        'http://localhost:8080/${product.image}',
+                        'http://localhost:8080/static/${product.image}',
                         width: 50,
                         height: 50,
                         errorBuilder: (context, error, stackTrace) =>
@@ -245,6 +247,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
             itemCount: products.length,
             itemBuilder: (context, index) {
               final product = products[index];
+              log(product.image);
               return Card(
                 elevation: 4,
                 child: Column(
@@ -253,7 +256,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
                     Expanded(
                       flex: 3,
                       child: Image.network(
-                        'http://localhost:8080/${product.image}',
+                        'http://localhost:8080/static/${product.image}', // Use `/static/` endpoint
                         fit: BoxFit.cover,
                         width: double.infinity,
                         errorBuilder: (context, error, stackTrace) =>
