@@ -59,31 +59,65 @@ class _ProductListScreenState extends State<ProductListScreen> {
     }
   }
 
-  void _addToCart(Product product) {
-    setState(() {
-      if (_cart.containsKey(product)) {
-        _cart[product] = _cart[product]! + 1;
-      } else {
-        _cart[product] = 1;
-      }
-    });
+  Future<void> _addToCart(Product product) async {
+    final response = await http.post(
+      Uri.parse('http://localhost:8080/cart'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'productId': product.id}),
+    );
+
+    if (response.statusCode == 200) {
+      setState(() {
+        _cart[product] = (_cart[product] ?? 0) + 1;
+      });
+    }
   }
 
-  void _removeFromCart(Product product) {
-    setState(() {
-      if (_cart.containsKey(product) && _cart[product]! > 1) {
-        _cart[product] = _cart[product]! - 1;
-      } else {
+  Future<void> _removeFromCart(Product product) async {
+    final response = await http.put(
+      Uri.parse('http://localhost:8080/cart'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'productId': product.id}),
+    );
+
+    if (response.statusCode == 200) {
+      setState(() {
+        if (_cart[product]! > 1) {
+          _cart[product] = _cart[product]! - 1;
+        } else {
+          _cart.remove(product);
+        }
+      });
+    }
+  }
+
+  Future<void> _deleteFromCart(Product product) async {
+    final response = await http.delete(
+      Uri.parse('http://localhost:8080/cart/${product.id}'),
+    );
+
+    if (response.statusCode == 200) {
+      setState(() {
         _cart.remove(product);
-      }
-    });
+      });
+    }
   }
 
-  void _deleteFromCart(Product product) {
-    setState(() {
-      _cart.remove(product);
-    });
+  Future<void> _buy() async {
+    final response = await http.post(
+      Uri.parse('http://localhost:8080/buy'),
+    );
+
+    if (response.statusCode == 200) {
+      setState(() {
+        _cart.clear();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Purchase successful!')),
+      );
+    }
   }
+
 
   double _calculateTotal() {
     return _cart.entries.fold<double>(
@@ -179,7 +213,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
                     ),
                     MaterialButton(
                       color: Colors.green,
-                      onPressed: (){}, child: const Text("Buy",style :  TextStyle(color: Colors.white, fontSize: 20)),)
+                      onPressed: () {}, child: const Text("Buy",style :  TextStyle(color: Colors.white, fontSize: 20)),)
                   ],
                 ),
               ),
